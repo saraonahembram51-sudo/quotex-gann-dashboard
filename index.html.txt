@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quotex & Forex Gann Suite - Zero Scroll Trading Terminal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              red: '#ef4444',
+              redDark: '#991b1b',
+              green: '#22c55e',
+              greenLight: '#4ade80',
+              darkBg: '#090d16',
+              cardBg: '#111827',
+              border: '#1f2937'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { background-color: #070a12; color: #e5e7eb; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; height: 100vh; overflow: hidden; }
+    .glass-card { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.25); }
+    .glow-green { box-shadow: 0 0 15px rgba(74, 222, 128, 0.25); }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+  </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden text-xs">
+
+  <!-- TOP APP HEADER -->
+  <header class="h-10 bg-gray-900 border-b border-gray-800 px-3 flex items-center justify-between shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2">
+        <i class="fa-solid font-bold text-red-500 text-sm fa-chart-line"></i>
+        <span class="font-extrabold tracking-wider text-gray-100 text-sm uppercase">Quotex <span class="text-red-500">Gann</span> Suite</span>
+      </div>
+      <!-- Network Indicator -->
+      <div id="netStatus" class="flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-800/50">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span id="netText">Online (Sync Ready)</span>
+      </div>
+    </div>
+
+    <!-- Navigation Buttons -->
+    <div class="flex bg-gray-950 p-0.5 rounded-lg border border-gray-800">
+      <button id="navBacktest" onclick="switchTab('backtest')" class="px-3 py-1 rounded-md font-semibold transition-all bg-red-600 text-white shadow-sm">
+        Gann Back-Testing & Matrix
+      </button>
+      <button id="navLive" onclick="switchTab('live')" class="px-3 py-1 rounded-md font-semibold transition-all text-gray-400 hover:text-white">
+        Live Trading & Journal
+      </button>
+    </div>
+
+    <!-- Backup & Reset Controls -->
+    <div class="flex items-center space-x-2">
+      <button onclick="exportJSONData()" title="Export JSON for local PC or Google Drive folder" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded flex items-center space-x-1 transition">
+        <i class="fa-solid fa-file-export text-emerald-400"></i>
+        <span>Export Backup</span>
+      </button>
+      <label class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded flex items-center space-x-1 cursor-pointer transition" title="Restore JSON backup">
+        <i class="fa-solid fa-file-import text-cyan-400"></i>
+        <span>Import Backup</span>
+        <input type="file" id="importFileInput" accept=".json" onchange="importJSONData(event)" class="hidden">
+      </label>
+      <button onclick="clearAllData()" class="px-2 py-1 bg-red-950/60 hover:bg-red-900 text-red-400 border border-red-800/50 rounded transition" title="Reset Dashboard">
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- RISK & LOCKOUT DYNAMIC WARNING BANNER -->
+  <div id="riskBanner" class="hidden shrink-0 px-3 py-1.5 bg-amber-950/80 border-b border-amber-600/50 text-amber-300 text-center font-bold flex items-center justify-center space-x-2">
+    <i class="fa-solid fa-triangle-exclamation text-amber-400 animate-bounce"></i>
+    <span id="riskBannerMsg">⚠️ 15-MINUTE COOLDOWN ACTIVE</span>
+  </div>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 overflow-hidden p-2 flex flex-col gap-2">
+
+    <!-- ================= TAB 1: BACK-TESTING & MATRIX ================= -->
+    <section id="tabBacktestView" class="flex-1 flex flex-col gap-2 overflow-hidden">
+      
+      <!-- TOP ANALYTICS MATRIX BANNER -->
+      <div class="glass-card p-2.5 rounded-lg grid grid-cols-6 gap-2 shrink-0">
+        <div class="bg-gray-900/80 p-2 rounded border border-gray-800 flex flex-col justify-between">
+          <span class="text-gray-400 text-[10px] uppercase font-semibold">Overall Win Rate</span>
+          <div class="flex items-baseline space-x-2">
+            <span id="statWinRate" class="text-base font-extrabold text-emerald-400">0.0%</span>
+            <span id="statTotalTests" class="text-[10px] text-gray-500">0 tests</span>
+          </div>
+        </div>
+        <div class="bg-gray-900/80 p-2 rounded border border-gray-800 flex flex-col justify-between">
+          <span class="text-gray-400 text-[10px] uppercase font-semibold">25% Gann Accuracy</span>
+          <span id="statAcc25" class="text-base font-extrabold text-cyan-400">0.0%</span>
+        </div>
+        <div class="bg-gray-900/80 p-2 rounded border border-gray-800 flex flex-col justify-between">
+          <span class="text-gray-400 text-[10px] uppercase font-semibold">50% Gann Accuracy</span>
+          <span id="statAcc50" class="text-base font-extrabold text-amber-400">0.0%</span>
+        </div>
+        <div class="bg-gray-900/80 p-2 rounded border border-gray-800 flex flex-col justify-between">
+          <span class="text-gray-400 text-[10px] uppercase font-semibold">75% Gann Accuracy</span>
+          <span id="statAcc75" class="text-base font-extrabold text-purple-400">0.0%</span>
+        </div>
+        <div class="bg-gray-900/80 p-2 rounded border border-gray-800 flex flex-col justify-between">
+          <span class="text-gray-400 text-[10px] uppercase font-semibold">IST Market Session</span>
+          <div class="flex items-center space-x-1">
+            <span id="badgeSession" class="px-1.5 py-0.5 rounded text-[10px] bg-red-950 text-red-400 border border-red-800/50 font-bold">Loading...</span>
+            <span id="istClock" class="text-[10px] text-gray-400">00:00:00</span>
+          </div>
+        </div>
+        <div class="bg-gray-900/80 p-2 rounded border border-gray-800 flex flex-col justify-between">
+          <span class="text-gray-400 text-[10px] uppercase font-semibold">Live Streak Status</span>
+          <div class="flex items-center space-x-2">
+            <span id="headerWinStreak" class="text-emerald-400 font-bold">W: 0</span>
+            <span id="headerLossStreak" class="text-red-400 font-bold">L: 0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- BACK-TESTING CONFIG & GRID CONTAINER -->
+      <div class="glass-card flex-1 p-3 rounded-lg flex flex-col gap-2 overflow-hidden">
+        
+        <!-- ASSET SELECTOR & HEADER -->
+        <div class="flex items-center justify-between shrink-0 bg-gray-900/60 p-2 rounded border border-gray-800">
+          <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-1.5">
+              <label class="text-gray-300 font-semibold">Asset Pair:</label>
+              <select id="backtestAsset" onchange="renderBacktestGrid()" class="bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-red-500">
+                <optgroup label="Quotex Live Forex">
+                  <option value="EUR/USD">EUR/USD</option>
+                  <option value="GBP/USD">GBP/USD</option>
+                  <option value="USD/JPY">USD/JPY</option>
+                  <option value="AUD/CAD">AUD/CAD</option>
+                  <option value="EUR/JPY">EUR/JPY</option>
+                  <option value="GBP/JPY">GBP/JPY</option>
+                </optgroup>
+                <optgroup label="Quotex OTC Assets">
+                  <option value="EUR/USD OTC">EUR/USD OTC</option>
+                  <option value="GBP/USD OTC">GBP/USD OTC</option>
+                  <option value="USD/INR OTC" selected>USD/INR OTC</option>
+                  <option value="USD/BDT OTC">USD/BDT OTC</option>
+                  <option value="USD/BRL OTC">USD/BRL OTC</option>
+                  <option value="EUR/GBP OTC">EUR/GBP OTC</option>
+                  <option value="AUD/CHF OTC">AUD/CHF OTC</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <!-- Custom Asset Add -->
+            <div class="flex items-center space-x-1">
+              <input type="text" id="customAssetInput" placeholder="Add custom OTC..." class="bg-gray-800 border border-gray-700 text-gray-100 px-2 py-1 rounded text-xs w-28">
+              <button onclick="addCustomAsset()" class="px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded transition">
+                <i class="fa-solid fa-plus"></i> Add
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-3 text-gray-400 text-[11px]">
+            <span><i class="fa-solid fa-clock text-cyan-400 mr-1"></i> Timeframe: <strong class="text-white">1M (Fixed)</strong></span>
+            <span><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Auto-Save & Matrix Instant Sync</span>
+          </div>
+        </div>
+
+        <!-- GANN LEVEL MATRIX TABLE (Rows: 25%, 50%, 75% | Cols: Test #1 to #7) -->
+        <div class="flex-1 overflow-auto custom-scrollbar border border-gray-800 rounded bg-gray-950/50">
+          <table class="w-full text-center border-collapse">
+            <thead>
+              <tr class="bg-gray-900 text-gray-300 uppercase text-[10px] tracking-wider sticky top-0 z-10 border-b border-gray-800">
+                <th class="p-2 text-left pl-3 w-32 border-r border-gray-800">Gann Level</th>
+                <th class="p-2 border-r border-gray-800">Test #1</th>
+                <th class="p-2 border-r border-gray-800">Test #2</th>
+                <th class="p-2 border-r border-gray-800">Test #3</th>
+                <th class="p-2 border-r border-gray-800">Test #4</th>
+                <th class="p-2 border-r border-gray-800">Test #5</th>
+                <th class="p-2 border-r border-gray-800">Test #6</th>
+                <th class="p-2">Test #7</th>
+              </tr>
+            </thead>
+            <tbody id="gannTableBody" class="divide-y divide-gray-800/60 text-xs">
+              <!-- Dynamically populated via JS -->
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ================= TAB 2: LIVE TRADING & JOURNAL ================= -->
+    <section id="tabLiveView" class="hidden flex-1 flex flex-col gap-2 overflow-hidden">
+      
+      <!-- LIVE TRADING TOP BAR & STREAK STATUS -->
+      <div class="glass-card p-2.5 rounded-lg flex items-center justify-between shrink-0">
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2">
+            <span class="text-gray-400 uppercase text-[10px]">Winning Streak:</span>
+            <span id="liveWinStreakBadge" class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold text-sm">0</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="text-gray-400 uppercase text-[10px]">Losing Streak:</span>
+            <span id="liveLossStreakBadge" class="px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800 font-bold text-sm">0</span>
+          </div>
+        </div>
+        <div id="liveLockoutNotice" class="hidden px-3 py-1 bg-red-900/80 text-white rounded font-bold text-[11px] animate-pulse">
+          🔒 LIVE TRADING LOCKED: WAITING FOR NEXT SESSION / DAY RESET
+        </div>
+        <div class="text-[11px] text-gray-400">
+          <i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i> Risk Rule: 2 losses = 15m Cooldown | 3 losses = Next Session Lock | 3 losses 2nd time = Day Lock
+        </div>
+      </div>
+
+      <!-- TRADE ENTRY & TABLE LAYOUT -->
+      <div class="flex-1 grid grid-cols-12 gap-2 overflow-hidden">
+        
+        <!-- TRADE FORM INPUT CARD -->
+        <div class="col-span-4 glass-card p-3 rounded-lg flex flex-col gap-2.5 overflow-y-auto custom-scrollbar">
+          <h3 class="font-bold text-gray-200 uppercase tracking-wider text-[11px] border-b border-gray-800 pb-1">
+            <i class="fa-solid fa-pen-to-square text-red-500 mr-1.5"></i> Log Live Trade Entry
+          </h3>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-gray-400 text-[10px] uppercase font-semibold">Asset Pair</label>
+            <select id="liveAsset" class="bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-red-500">
+              <!-- Populated via JS -->
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-gray-400 text-[10px] uppercase font-semibold">Timeframe</label>
+              <input type="text" value="1M" disabled class="bg-gray-900 border border-gray-800 text-gray-400 px-2 py-1.5 rounded text-xs">
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-gray-400 text-[10px] uppercase font-semibold">Session</label>
+              <input type="text" id="liveSessionDisplay" disabled class="bg-gray-900 border border-gray-800 text-gray-300 px-2 py-1.5 rounded text-xs font-semibold">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-gray-400 text-[10px] uppercase font-semibold">Trend</label>
+              <select id="liveTrend" class="bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1.5 text-xs">
+                <option value="Bullish">Bullish</option>
+                <option value="Bearish">Bearish</option>
+                <option value="Consolidation">Consolidation</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-gray-400 text-[10px] uppercase font-semibold">Gann Level</label>
+              <select id="liveGannLevel" class="bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1.5 text-xs">
+                <option value="25%">25% Gann Level</option>
+                <option value="50%">50% Gann Level</option>
+                <option value="75%">75% Gann Level</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-gray-400 text-[10px] uppercase font-semibold">Candle Formation Pattern</label>
+            <select id="livePattern" class="bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1.5 text-xs">
+              <option value="Hammer / Reversal">Hammer / Reversal</option>
+              <option value="Shooting Star">Shooting Star</option>
+              <option value="Bullish Engulfing">Bullish Engulfing</option>
+              <option value="Bearish Engulfing">Bearish Engulfing</option>
+              <option value="Doji Rejection">Doji Rejection</option>
+              <option value="Continuation Marubozu">Continuation Marubozu</option>
+            </select>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-gray-400 text-[10px] uppercase font-semibold">Predicted Direction</label>
+            <select id="livePrediction" class="bg-gray-800 border border-gray-700 text-gray-100 rounded px-2 py-1.5 text-xs">
+              <option value="Continuation Candle">Continuation Candle</option>
+              <option value="Reversal Candle">Reversal Candle</option>
+            </select>
+          </div>
+
+          <!-- OUTCOME RESULT BUTTONS (Auto-Save on Click) -->
+          <div class="flex flex-col gap-1.5 mt-1">
+            <label class="text-gray-300 text-[10px] uppercase font-bold tracking-wider">Select Actual Outcome (Auto-Saves Log)</label>
+            <div class="grid grid-cols-3 gap-2">
+              <button onclick="recordLiveTrade('WIN')" class="py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded shadow transition">
+                <i class="fa-solid fa-check mr-1"></i> WIN
+              </button>
+              <button onclick="recordLiveTrade('LOSS')" class="py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded shadow transition">
+                <i class="fa-solid fa-xmark mr-1"></i> LOSS
+              </button>
+              <button onclick="recordLiveTrade('REFUND')" class="py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded shadow transition">
+                <i class="fa-solid fa-rotate-left mr-1"></i> REFUND
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TRADE LOG TABLE & AI SETUP ADVISOR -->
+        <div class="col-span-8 flex flex-col gap-2 overflow-hidden">
+          
+          <!-- TRADE HISTORY TABLE -->
+          <div class="glass-card flex-1 p-2.5 rounded-lg flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between pb-2 border-b border-gray-800 shrink-0">
+              <h4 class="font-bold text-gray-200 text-[11px] uppercase">
+                <i class="fa-solid fa-list-ul text-cyan-400 mr-1.5"></i> Trade Journal Log History
+              </h4>
+              <span id="tradeCountBadge" class="text-[10px] text-gray-400">0 trades recorded</span>
+            </div>
+
+            <div class="flex-1 overflow-auto custom-scrollbar mt-2 border border-gray-800 rounded bg-gray-950/50">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-gray-900 text-gray-400 uppercase text-[10px] tracking-wider sticky top-0 border-b border-gray-800">
+                    <th class="p-2">Time (IST)</th>
+                    <th class="p-2">Asset</th>
+                    <th class="p-2">Session</th>
+                    <th class="p-2">Gann Level</th>
+                    <th class="p-2">Pattern</th>
+                    <th class="p-2">Prediction</th>
+                    <th class="p-2 text-center">Outcome</th>
+                  </tr>
+                </thead>
+                <tbody id="liveTradesTableBody" class="divide-y divide-gray-800/60 text-xs">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- AI SETUP ADVISOR (Below Live Trading) -->
+          <div class="glass-card p-3 rounded-lg shrink-0 border border-gray-800 bg-gray-900/90">
+            <div class="flex items-center space-x-2 mb-1.5">
+              <i class="fa-solid fa-robot text-purple-400"></i>
+              <h4 class="font-bold text-gray-200 text-[11px] uppercase tracking-wider">AI Past Setup & Performance Advisor</h4>
+            </div>
+            <div id="aiAdvisorContent" class="text-[11px] text-gray-300 leading-relaxed">
+              Analyzing past winning and losing setup logs across sessions and Gann levels...
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- APPLICATION JAVASCRIPT LOGIC -->
+  <script>
+    // State Data Storage
+    let db = {
+      assets: ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/CAD", "EUR/JPY", "GBP/JPY", "EUR/USD OTC", "GBP/USD OTC", "USD/INR OTC", "USD/BDT OTC", "USD/BRL OTC", "EUR/GBP OTC", "AUD/CHF OTC"],
+      backtests: {}, // key: "asset_level_testIndex", value: "Continuation Candle" or "Reversal Candle"
+      trades: [],    // array of live trade objects
+      winStreak: 0,
+      lossStreak: 0,
+      totalLossesToday: 0,
+      lockoutUntil: 0, // timestamp
+      lockoutType: null // '15min', 'session', 'day'
+    };
+
+    // Load from localStorage on startup
+    function loadStorage() {
+      const saved = localStorage.getItem('quotex_gann_suite_db_v3');
+      if (saved) {
+        try {
+          db = JSON.parse(saved);
+        } catch(e) { console.error("Error loading storage", e); }
+      }
+    }
+
+    function saveStorage() {
+      localStorage.setItem('quotex_gann_suite_db_v3', JSON.stringify(db));
+      updateAllUI();
+    }
+
+    // Tab Switching
+    function switchTab(tab) {
+      const backtestView = document.getElementById('tabBacktestView');
+      const liveView = document.getElementById('tabLiveView');
+      const navBacktest = document.getElementById('navBacktest');
+      const navLive = document.getElementById('navLive');
+
+      if (tab === 'backtest') {
+        backtestView.classList.remove('hidden');
+        liveView.classList.add('hidden');
+        navBacktest.className = "px-3 py-1 rounded-md font-semibold transition-all bg-red-600 text-white shadow-sm";
+        navLive.className = "px-3 py-1 rounded-md font-semibold transition-all text-gray-400 hover:text-white";
+      } else {
+        backtestView.classList.add('hidden');
+        liveView.classList.remove('hidden');
+        navLive.className = "px-3 py-1 rounded-md font-semibold transition-all bg-red-600 text-white shadow-sm";
+        navBacktest.className = "px-3 py-1 rounded-md font-semibold transition-all text-gray-400 hover:text-white";
+      }
+    }
+
+    // IST Clock & Session Detector (+5:30)
+    function getISTTime() {
+      const now = new Date();
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const istTime = new Date(utc + (3600000 * 5.5));
+      return istTime;
+    }
+
+    function updateClockAndSession() {
+      const ist = getISTTime();
+      const hours = ist.getHours();
+      const minutes = ist.getMinutes();
+      const seconds = ist.getSeconds();
+      
+      const timeStr = [
+        hours.toString().padStart(2, '0'),
+        minutes.toString().padStart(2, '0'),
+        seconds.toString().padStart(2, '0')
+      ].join(':');
+
+      document.getElementById('istClock').innerText = timeStr;
+
+      // Determine Market Session based on IST hours
+      let sessionName = "Sydney / Tokyo";
+      let badgeColor = "bg-purple-950 text-purple-400 border-purple-800/50";
+      
+      if (hours >= 12 && hours < 17) {
+        sessionName = "London Open";
+        badgeColor = "bg-amber-950 text-amber-400 border-amber-800/50";
+      } else if (hours >= 17 && hours < 22) {
+        sessionName = "London / NY Overlap";
+        badgeColor = "bg-emerald-950 text-emerald-400 border-emerald-800/50";
+      } else if (hours >= 22 || hours < 2) {
+        sessionName = "New York Late";
+        badgeColor = "bg-blue-950 text-blue-400 border-blue-800/50";
+      }
+
+      const badge = document.getElementById('badgeSession');
+      badge.innerText = sessionName;
+      badge.className = `px-1.5 py-0.5 rounded text-[10px] border font-bold ${badgeColor}`;
+
+      const liveSessionDisplay = document.getElementById('liveSessionDisplay');
+      if (liveSessionDisplay) liveSessionDisplay.value = sessionName;
+
+      // Check Lockout timers
+      checkLockoutStatus();
+    }
+
+    // Populate Asset Dropdowns
+    function populateAssets() {
+      const backtestSelect = document.getElementById('backtestAsset');
+      const liveSelect = document.getElementById('liveAsset');
+      
+      const currentBacktestVal = backtestSelect.value;
+      const currentLiveVal = liveSelect.value;
+
+      let optionsHTML = '';
+      db.assets.forEach(asset => {
+        optionsHTML += `<option value="${asset}">${asset}</option>`;
+      });
+
+      backtestSelect.innerHTML = optionsHTML;
+      liveSelect.innerHTML = optionsHTML;
+
+      if (db.assets.includes(currentBacktestVal)) backtestSelect.value = currentBacktestVal;
+      if (db.assets.includes(currentLiveVal)) liveSelect.value = currentLiveVal;
+    }
+
+    function addCustomAsset() {
+      const input = document.getElementById('customAssetInput');
+      const val = input.value.trim().toUpperCase();
+      if (val && !db.assets.includes(val)) {
+        db.assets.push(val);
+        input.value = '';
+        populateAssets();
+        document.getElementById('backtestAsset').value = val;
+        renderBacktestGrid();
+        saveStorage();
+      }
+    }
+
+    // Render Back-Testing Grid (Rows: 25%, 50%, 75% | Cols: Test #1 to #7)
+    function renderBacktestGrid() {
+      const asset = document.getElementById('backtestAsset').value;
+      const tbody = document.getElementById('gannTableBody');
+      const levels = ["25%", "50%", "75%"];
+      let html = '';
+
+      levels.forEach(level => {
+        html += `<tr class="hover:bg-gray-900/40">`;
+        html += `<td class="p-2.5 font-bold text-gray-300 text-left pl-3 border-r border-gray-800 bg-gray-900/30 flex items-center justify-between">
+                   <span>${level} Gann Level</span>
+                   <span class="text-[10px] text-gray-500 font-normal">1M</span>
+                 </td>`;
+
+        for (let i = 1; i <= 7; i++) {
+          const key = `${asset}_${level}_Test${i}`;
+          const currentVal = db.backtests[key] || "";
+          
+          let selectColor = "text-gray-400 bg-gray-900 border-gray-800";
+          if (currentVal === "Continuation Candle") selectColor = "text-emerald-400 bg-emerald-950/40 border-emerald-800/60 font-semibold";
+          if (currentVal === "Reversal Candle") selectColor = "text-red-400 bg-red-950/40 border-red-800/60 font-semibold";
+
+          html += `<td class="p-1.5 border-r border-gray-800/60 text-center">
+                     <select onchange="updateBacktestCell('${asset}', '${level}', ${i}, this.value)" class="w-full px-1.5 py-1 rounded text-xs border ${selectColor} focus:ring-1 focus:ring-red-500">
+                       <option value="">-- Select --</option>
+                       <option value="Continuation Candle" ${currentVal === 'Continuation Candle' ? 'selected' : ''}>Continuation Candle</option>
+                       <option value="Reversal Candle" ${currentVal === 'Reversal Candle' ? 'selected' : ''}>Reversal Candle</option>
+                     </select>
+                   </td>`;
+        }
+        html += `</tr>`;
+      });
+
+      tbody.innerHTML = html;
+      calculateAnalytics();
+    }
+
+    function updateBacktestCell(asset, level, testNum, val) {
+      const key = `${asset}_${level}_Test${testNum}`;
+      if (val === "") {
+        delete db.backtests[key];
+      } else {
+        db.backtests[key] = val;
+      }
+      saveStorage();
+      renderBacktestGrid();
+    }
+
+    // Analytics & Accuracy Calculations
+    function calculateAnalytics() {
+      let totalTests = 0;
+      let totalContinuations = 0;
+      let count25 = { total: 0, reversals: 0 };
+      let count50 = { total: 0, reversals: 0 };
+      let count75 = { total: 0, reversals: 0 };
+
+      Object.keys(db.backtests).forEach(key => {
+        const val = db.backtests[key];
+        if (val) {
+          totalTests++;
+          if (val === "Continuation Candle") totalContinuations++;
+          
+          if (key.includes("_25%_")) {
+            count25.total++;
+            if (val === "Reversal Candle") count25.reversals++;
+          } else if (key.includes("_50%_")) {
+            count50.total++;
+            if (val === "Reversal Candle") count50.reversals++;
+          } else if (key.includes("_75%_")) {
+            count75.total++;
+            if (val === "Reversal Candle") count75.reversals++;
+          }
+        }
+      });
+
+      const winRate = totalTests > 0 ? ((totalContinuations / totalTests) * 100).toFixed(1) : "0.0";
+      const acc25 = count25.total > 0 ? ((count25.reversals / count25.total) * 100).toFixed(1) : "0.0";
+      const acc50 = count50.total > 0 ? ((count50.reversals / count50.total) * 100).toFixed(1) : "0.0";
+      const acc75 = count75.total > 0 ? ((count75.reversals / count75.total) * 100).toFixed(1) : "0.0";
+
+      document.getElementById('statWinRate').innerText = `${winRate}%`;
+      document.getElementById('statTotalTests').innerText = `${totalTests} tests`;
+      document.getElementById('statAcc25').innerText = `${acc25}%`;
+      document.getElementById('statAcc50').innerText = `${acc50}%`;
+      document.getElementById('statAcc75').innerText = `${acc75}%`;
+
+      document.getElementById('headerWinStreak').innerText = `W: ${db.winStreak}`;
+      document.getElementById('headerLossStreak').innerText = `L: ${db.lossStreak}`;
+      document.getElementById('liveWinStreakBadge').innerText = db.winStreak;
+      document.getElementById('liveLossStreakBadge').innerText = db.lossStreak;
+
+      renderLiveTradesTable();
+      renderAIAdvisor();
+    }
+
+    // Live Trade Logging & Risk Rules
+    function recordLiveTrade(outcome) {
+      if (db.lockoutUntil && Date.now() < db.lockoutUntil) {
+        alert("Live Trading is currently locked due to risk management rules. Please wait.");
+        return;
+      }
+
+      const ist = getISTTime();
+      const timeStr = ist.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      const trade = {
+        id: Date.now(),
+        time: timeStr,
+        asset: document.getElementById('liveAsset').value,
+        session: document.getElementById('liveSessionDisplay').value,
+        trend: document.getElementById('liveTrend').value,
+        gannLevel: document.getElementById('liveGannLevel').value,
+        pattern: document.getElementById('livePattern').value,
+        prediction: document.getElementById('livePrediction').value,
+        outcome: outcome
+      };
+
+      db.trades.unshift(trade);
+
+      // Streak & Risk Management logic
+      if (outcome === 'WIN') {
+        db.winStreak++;
+        db.lossStreak = 0;
+      } else if (outcome === 'LOSS') {
+        db.lossStreak++;
+        db.winStreak = 0;
+        db.totalLossesToday++;
+
+        if (db.lossStreak === 2) {
+          // 2 consecutive losses: 15 min cooldown
+          db.lockoutUntil = Date.now() + (15 * 60 * 1000);
+          db.lockoutType = '15min';
+        } else if (db.lossStreak >= 3) {
+          if (db.totalLossesToday >= 6) {
+            // 3 consecutive losses second time in a day -> lock for the rest of the day
+            const tomorrow = new Date(ist);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0,0,0,0);
+            db.lockoutUntil = tomorrow.getTime();
+            db.lockoutType = 'day';
+          } else {
+            // 3 consecutive losses first time -> lock until next session
+            db.lockoutUntil = Date.now() + (2 * 3600 * 1000);
+            db.lockoutType = 'session';
+          }
+        }
+      }
+
+      saveStorage();
+    }
+
+    function checkLockoutStatus() {
+      const banner = document.getElementById('riskBanner');
+      const bannerMsg = document.getElementById('riskBannerMsg');
+      const lockoutNotice = document.getElementById('liveLockoutNotice');
+
+      if (db.lockoutUntil && Date.now() < db.lockoutUntil) {
+        const remainingSec = Math.ceil((db.lockoutUntil - Date.now()) / 1000);
+        const mins = Math.floor(remainingSec / 60);
+        const secs = remainingSec % 60;
+
+        banner.classList.remove('hidden');
+        if (db.lockoutType === '15min') {
+          bannerMsg.innerText = `⚠️ 15-MINUTE COOLDOWN ACTIVE (${mins}m ${secs}s remaining)`;
+        } else if (db.lockoutType === 'session') {
+          bannerMsg.innerText = `🔒 TRADING LOCKED UNTIL NEXT SESSION (${mins}m remaining)`;
+        } else {
+          bannerMsg.innerText = `🛑 DAILY TRADING LOCKOUT ACTIVE (Locked for the rest of the day)`;
+          lockoutNotice.classList.remove('hidden');
+        }
+      } else {
+        banner.classList.add('hidden');
+        lockoutNotice.classList.add('hidden');
+        if (db.lockoutUntil) {
+          db.lockoutUntil = 0;
+          db.lockoutType = null;
+          saveStorage();
+        }
+      }
+    }
+
+    function renderLiveTradesTable() {
+      const tbody = document.getElementById('liveTradesTableBody');
+      document.getElementById('tradeCountBadge').innerText = `${db.trades.length} trades recorded`;
+
+      if (db.trades.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-gray-500">No live trades recorded yet. Select an outcome above to log your first trade.</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      db.trades.forEach(t => {
+        let outcomeBadge = "";
+        if (t.outcome === 'WIN') outcomeBadge = `<span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">WIN</span>`;
+        else if (t.outcome === 'LOSS') outcomeBadge = `<span class="px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800 font-bold">LOSS</span>`;
+        else outcomeBadge = `<span class="px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800 font-bold">REFUND</span>`;
+
+        html += `<tr class="hover:bg-gray-900/40">
+                   <td class="p-2 text-gray-400">${t.time}</td>
+                   <td class="p-2 font-bold text-gray-200">${t.asset}</td>
+                   <td class="p-2 text-gray-300">${t.session}</td>
+                   <td class="p-2 text-cyan-400">${t.gannLevel}</td>
+                   <td class="p-2 text-gray-300">${t.pattern}</td>
+                   <td class="p-2 text-gray-300">${t.prediction}</td>
+                   <td class="p-2 text-center">${outcomeBadge}</td>
+                 </tr>`;
+      });
+      tbody.innerHTML = html;
+    }
+
+    // AI Advisor Setup Suggestions based on Past Trades
+    function renderAIAdvisor() {
+      const advisorDiv = document.getElementById('aiAdvisorContent');
+      if (db.trades.length < 3) {
+        advisorDiv.innerHTML = `<span class="text-gray-400">💡 Log at least 3 live trades with outcomes (Win/Loss) to activate AI pattern recognition and setup suggestions.</span>`;
+        return;
+      }
+
+      let wins = db.trades.filter(t => t.outcome === 'WIN');
+      let winRate = ((wins.length / db.trades.length) * 100).toFixed(1);
+
+      let levelCounts = {};
+      wins.forEach(w => { levelCounts[w.gannLevel] = (levelCounts[w.gannLevel] || 0) + 1; });
+      let bestLevel = Object.keys(levelCounts).reduce((a, b) => levelCounts[a] > levelCounts[b] ? a : b, '50%');
+
+      advisorDiv.innerHTML = `
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-emerald-950/30 p-2 rounded border border-emerald-800/40">
+            <span class="text-emerald-400 font-bold block mb-1"><i class="fa-solid fa-circle-check mr-1"></i> Highest Win-Rate Setup:</span>
+            <span>Focus on <strong>${bestLevel} Gann Level</strong> setups during high-volume sessions. Current recorded win rate: <strong class="text-emerald-400">${winRate}%</strong>.</span>
+          </div>
+          <div class="bg-red-950/30 p-2 rounded border border-red-800/40">
+            <span class="text-red-400 font-bold block mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i> High-Risk Loss Warning:</span>
+            <span>Avoid entering counter-trend continuation setups when consecutive losses reach 2. Stick strictly to 15-minute cooldown rules.</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // Method 1: Backup JSON Export & Import
+    function exportJSONData() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `quotex_gann_journal_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function importJSONData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported && imported.backtests && imported.trades) {
+            db = imported;
+            saveStorage();
+            populateAssets();
+            renderBacktestGrid();
+            alert("Backup successfully restored!");
+          } else {
+            alert("Invalid backup file structure.");
+          }
+        } catch(err) {
+          alert("Error parsing JSON file.");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function clearAllData() {
+      if (confirm("Are you sure you want to reset all backtests and live trade journal logs?")) {
+        db = {
+          assets: ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/CAD", "EUR/JPY", "GBP/JPY", "EUR/USD OTC", "GBP/USD OTC", "USD/INR OTC", "USD/BDT OTC", "USD/BRL OTC", "EUR/GBP OTC", "AUD/CHF OTC"],
+          backtests: {},
+          trades: [],
+          winStreak: 0,
+          lossStreak: 0,
+          totalLossesToday: 0,
+          lockoutUntil: 0,
+          lockoutType: null
+        };
+        saveStorage();
+        populateAssets();
+        renderBacktestGrid();
+      }
+    }
+
+    function updateAllUI() {
+      populateAssets();
+      renderBacktestGrid();
+      checkLockoutStatus();
+    }
+
+    // Initialize on load
+    window.onload = function() {
+      loadStorage();
+      populateAssets();
+      renderBacktestGrid();
+      setInterval(updateClockAndSession, 1000);
+      updateClockAndSession();
+    };
+  </script>
+</body>
+</html>
